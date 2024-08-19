@@ -4,8 +4,8 @@
   "description": "this is user management services",
   "main": "server.js",
   "scripts": {
-    "dev": "node --watch src/server.js",
-    "start": "nodemon src/server.js"
+    "dev": "nodemon  src/server.js",
+    "start": "node src/server.js"
   },
   "author": "sanju kumari",
   "license": "ISC",
