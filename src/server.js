@@ -2,20 +2,22 @@ const express = require("express");
 const connectDB = require("./config/db");
 const cors = require('cors');
 const userRoutes = require("./routes/userRoutes");
-const memberRoutes = require("./routes/memberRoutes");
+// const memberRoutes = require("./routes/memberRoutes");
 const auth = require("./middleware/auth");
+const eventRoutes = require("./routes/eventRoutes");
+const limiter = require("./middleware/ratelimit");
 require("dotenv").config();
 
 const app = express();
 app.use(express.json());
 app.use(cors());
-
+app.use(limiter);
 
 app.get("/",(req,res)=>{
     res.send("this is home page");
 });
 
-app.use("/userMangement",auth,memberRoutes)
+app.use("/events",auth,eventRoutes)
 app.use("/user",userRoutes);
 
 const port = process.env.PORT;

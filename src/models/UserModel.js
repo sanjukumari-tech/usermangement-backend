@@ -8,6 +8,11 @@ const UserSchema = new mongoose.Schema({
   password: { type: String, required: true },
   profilePic: { type: String },
   eventsRegistered: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Event' }],
+  role: {
+    type: String,
+    enum: ["organiser", "admin", "participants"],
+    default: "admin",
+  },
 });
 
 

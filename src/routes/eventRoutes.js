@@ -1,79 +1,114 @@
-// routes/eventRoutes.js
 const express = require('express');
-const Event = require('../models/Event');
-const User = require('../models/User');
-const { ensureAuthenticated } = require('../middleware/auth');
+const Event = require('../models/EventModel');
+const role = require('../middleware/role');
+const auth = require('../middleware/auth'); // Ensure auth middleware is used
+
 const router = express.Router();
 
-// Create Event
-router.post('/create', ensureAuthenticated, async (req, res) => {
-  const { name, description, date, capacity, price } = req.body;
-
-  const newEvent = new Event({
-    name,
-    description,
-    date,
-    capacity,
-    price,
-    createdBy: req.user._id,
-  });
-
-  await newEvent.save();
-  res.redirect('/events');
-});
-
-// Register for Event
-router.post('/register/:eventId', ensureAuthenticated, async (req, res) => {
-  const event = await Event.findById(req.params.eventId);
-  if (!event) return res.status(404).send('Event not found');
-
-  if (event.attendees.includes(req.user._id)) {
-    return res.status(400).send('You are already registered for this event');
+// Get all events
+router.get('/', auth, role(['admin', 'organizer', 'participant']), async (req, res) => {
+  try {
+    const events = await Event.find({ deleted: false }).populate('attendees');
+    res.json({ events });
+  } catch (error) {
+    console.error(error);
+    res.status(500).send('Error fetching events');
   }
+});
 
-  if (event.attendees.length >= event.capacity) {
-    return res.status(400).send('Event is sold out');
+// Create a new event (Organizer only)
+router.post('/create', auth, role(['admin', 'organizer']), async (req, res) => {
+  const { eventName, description, eventDate, capacity } = req.body;
+  
+  try {
+    const newEvent = new Event({
+      eventName,
+      description,
+      eventDate,
+      capacity,
+      createdBy: req.user._id, // Set the organizer's ID
+    });
+    await newEvent.save();
+    res.status(201).json({ message: 'Event created successfully', event: newEvent });
+  } catch (error) {
+    console.error(error);
+    res.status(500).send('Error creating event');
   }
-
-  event.attendees.push(req.user._id);
-  await event.save();
-
-  req.user.eventsRegistered.push(event._id);
-  await req.user.save();
-
-  res.redirect('/events');
 });
 
-// Cancel Event
-router.post('/cancel/:eventId', ensureAuthenticated, async (req, res) => {
-  const event = await Event.findById(req.params.eventId);
-  if (!event) return res.status(404).send('Event not found');
+// Update an event (Admin and Organizer who created the event)
+router.patch('/update/:id', auth, role(['admin', 'organizer']), async (req, res) => {
+  const { id } = req.params;
+  const { eventName, description, eventDate, capacity } = req.body;
+  
+  try {
+    const event = await Event.findById(id);
+    if (!event) return res.status(404).send('Event not found');
 
-  const daysRemaining = (new Date(event.date) - new Date()) / (1000 * 60 * 60 * 24);
-  if (event.attendees.length > 0 || daysRemaining <= process.env.CANCEL_DAYS) {
-    return res.status(400).send('Cannot cancel event');
+    if (req.user.role !== 'admin' && !event.createdBy.equals(req.user._id)) {
+      return res.status(403).json({ message: 'Not authorized to update this event' });
+    }
+
+    event.eventName = eventName || event.eventName;
+    event.description = description || event.description;
+    event.eventDate = eventDate || event.eventDate;
+    event.capacity = capacity || event.capacity;
+
+    await event.save();
+    res.json({ message: 'Event updated successfully', event });
+  } catch (error) {
+    console.error(error);
+    res.status(500).send('Error updating event');
   }
-
-  await event.remove();
-  res.redirect('/events');
 });
 
-// Get All Events
-router.get('/', async (req, res) => {
-  const events = await Event.find().populate('attendees', 'name');
-  res.render('events', { events });
+// Delete an event (Admin only)
+router.delete('/delete/:id', auth, role(['admin']), async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const event = await Event.findById(id);
+    if (!event) return res.status(404).send('Event not found');
+
+    event.deleted = true; // Soft delete
+    await event.save();
+    res.json({ message: 'Event deleted successfully' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).send('Error deleting event');
+  }
 });
 
-// Get Events by User
-router.get('/user/:userId', async (req, res) => {
-  const events = await Event.find({ createdBy: req.params.userId });
-  res.render('userEvents', { events });
+// Register for an event (Participant only)
+router.post('/register/:id', auth, role(['participant']), async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const event = await Event.findById(id);
+    if (!event) return res.status(404).send('Event not found');
+
+    if (event.attendees.includes(req.user._id)) {
+      return res.status(400).json({ message: 'Already registered for this event' });
+    }
+
+    event.attendees.push(req.user._id);
+    await event.save();
+    res.json({ message: 'Successfully registered for the event', event });
+  } catch (error) {
+    console.error(error);
+    res.status(500).send('Error registering for event');
+  }
 });
 
-// Get Events Registered by User
-router.get('/registered', ensureAuthenticated, async (req, res) => {
-  await req.user.populate('eventsRegistered').execPopulate();
-  res.render('registeredEvents', { events: req.user.eventsRegistered });
+// View registered events (Participant only)
+router.get('/my-events', auth, role(['participant']), async (req, res) => {
+  try {
+    const events = await Event.find({ attendees: req.user._id, deleted: false });
+    res.json({ events });
+  } catch (error) {
+    console.error(error);
+    res.status(500).send('Error fetching registered events');
+  }
 });
 
 module.exports = router;

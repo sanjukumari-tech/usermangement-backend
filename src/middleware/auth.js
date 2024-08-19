@@ -7,10 +7,10 @@ const secret_key = process.env.JWT_SECRETKEY;
 const auth = async (req,res,next)=>{
   const header = req.headers.authorization;
   if(!header){
-    return res.json({message:"token is invalid"})
+    return res.status(401).json({message:"token is invalid"})
   }
 
-  const token = header.split(" ")[1];
+  const token = header.split(" ")[2];
 
   // you are one giving the expires
 
